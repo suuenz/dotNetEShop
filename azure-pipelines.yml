@@ -9,8 +9,8 @@ pool:
 variables:
   acrLoginServer: 'eshopweb2025.azurecr.io'
   acrServiceConnection: 'eshopweb2025'         # ← Docker Registry
-  azureSubscription: 'arm_eshop'               # ← Azure Resource Manager
-  azureSubscriptionEndpoint: 'arm_eshop'       # ← برای DockerCompose
+  azureSubscription: 'Azure subscription 1 (2edd3441-9535-4384-9f66-2e3fad269e4c)'               # ← Azure Resource Manager
+  azureSubscriptionEndpoint: 'Azure subscription 1 (2edd3441-9535-4384-9f66-2e3fad269e4c)'       # ← برای DockerCompose
   webAppName: 'eshopweb2025-app'
   imageRepository: 'eshoppublicapi'
   tag: '$(Build.BuildId)'
