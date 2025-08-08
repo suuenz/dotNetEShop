@@ -1,42 +1,57 @@
-# اجرای پایپلاین به صورت خودکار روی شاخه main
+# این قسمت مشخص می‌کنه که پایپلاین با هر تغییری روی برنچ main اجرا بشه
 trigger:
-- main
+  branches:
+    include:
+      - main
 
-# تعریف متغیرها برای استفاده در مراحل بعدی
-variables:
-  dockerRegistryServiceConnection: 'eshopwebdr'  # نام سرویسی که برای اتصال به ACR ساختی
-  projectName: 'eshopweb2025'                    # نام پروژه (برای استفاده در Docker Compose)
-
-# استفاده از ایمیج لینوکسی برای اجرای Jobها
+# مشخص کردن نوع ماشین مجازی برای اجرای مراحل (اینجا Ubuntu آخرین نسخه)
 pool:
   vmImage: 'ubuntu-latest'
 
-steps:
-# مرحله اول: بیلد کردن ایمیج‌ها با استفاده از docker-compose
-- task: DockerCompose@0
-  displayName: 'Build Docker Images'
-  inputs:
-    containerregistrytype: 'Azure Container Registry'        # نوع رجیستری ACR است
-    dockerRegistryServiceConnection: $(dockerRegistryServiceConnection)  # اتصال به ACR
-    dockerComposeFile: '**/docker-compose.yml'               # مسیر فایل docker-compose
-    action: 'Build services'                                 # عملیات بیلد
-    projectName: $(projectName)                              # نام پروژه برای docker-compose
-    includeLatestTag: true                                   # تگ latest هم زده بشه
+# تعریف متغیرهای عمومی برای استفاده در مراحل مختلف
+variables:
+  dockerRegistryServiceConnection: 'eshopwebdr'  # نام کانکشن رجیستری ACR
+  dockerComposeFile: 'docker-compose.yml'        # مسیر فایل داکر کامپوز
+  dockerComposeProjectName: 'eshopapp'           # نام پروژه برای Docker Compose (فقط حروف کوچک و عدد)
+  containerRegistry: 'eshopweb2025.azurecr.io'   # آدرس کامل رجیستری ACR
 
-# مرحله دوم: پوش کردن ایمیج‌ها به رجیستری
-- task: DockerCompose@0
-  displayName: Push images
-  inputs:
-    containerregistrytype: 'Azure Container Registry'
-    azureSubscription: 'eshopwebrm'
-    azureContainerRegistry: 'eshopwebdr'
-    dockerComposeFile: '**/docker-compose.yml'
-    action: 'Push services'
-- task: DockerCompose@0
-  displayName: 'Push Docker Images to ACR'
-  inputs:
-    containerregistrytype: 'Azure Container Registry'
-    dockerRegistryServiceConnection: $(dockerRegistryServiceConnection)
-    dockerComposeFile: '**/docker-compose.yml'
-    action: 'Push services'
-    projectName: $(projectName)
+# مرحله اول و تنها مرحله فعلاً: بیلد و پوش ایمیج‌ها
+stages:
+- stage: BuildAndPush
+  displayName: Build and Push Docker Images
+  jobs:
+  - job: BuildAndPushJob
+    displayName: Build & Push
+    steps:
+
+    # مرحله checkout: سورس کد پروژه رو از ریپو دریافت می‌کنه
+    - checkout: self
+
+    # لاگین به Azure Container Registry با استفاده از service connection
+    - task: Docker@2
+      displayName: 'Login to ACR'
+      inputs:
+        command: login
+        containerRegistry: $(dockerRegistryServiceConnection)
+
+    # اجرای docker-compose برای بیلد کردن سرویس‌ها
+    - task: DockerCompose@0
+      displayName: 'Build Docker Images'
+      inputs:
+        containerregistrytype: 'Azure Container Registry'
+        azureSubscription: 'eshopwebrm'         # اگه ارور داد از serviceConnection استفاده کن
+        azureContainerRegistry: $(containerRegistry)
+        dockerComposeFile: $(dockerComposeFile)
+        projectName: $(dockerComposeProjectName)
+        action: 'Build services'
+
+    # اجرای docker-compose برای push کردن ایمیج‌ها به ACR
+    - task: DockerCompose@0
+      displayName: 'Push Docker Images'
+      inputs:
+        containerregistrytype: 'Azure Container Registry'
+        azureSubscription: 'eshopwebrm'
+        azureContainerRegistry: $(containerRegistry)
+        dockerComposeFile: $(dockerComposeFile)
+        projectName: $(dockerComposeProjectName)
+        action: 'Push services'
