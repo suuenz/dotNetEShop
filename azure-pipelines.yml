@@ -1,143 +1,77 @@
-# azure-pipelines.yml
 trigger:
   branches:
     include:
       - main
 
-name: $(Date:yyyyMMdd).$(Rev:r)
+pool:
+  vmImage: ubuntu-latest
 
 variables:
-  acrLoginServer: 'eshopweb2025.azurecr.io'     # ثابت شما
-  imageRepository: 'eshopweb2025'               # اسم ایمیج/ریپو در ACR
-  dockerfilePath: 'src/Web/Dockerfile'          # در صورت نیاز تغییر بده (مثلاً src/PublicApi/Dockerfile)
-  buildContext: '.'
-  imageTag: '$(Build.BuildId)'                  # تگ نسخه
-  containerPort: '8080'                         # باید با Dockerfile هماهنگ باشد (ASPNETCORE_URLS=http://+:8080)
+  acrLoginServer: 'eshopweb2025.azurecr.io'         # آدرس ACR شما
+  acrServiceConnection: 'eshopweb2025'        # اتصال ACR در DevOps
+  azureSubscription: 'arm-eshop'                # اتصال ARM برای دیپلوی
+  webAppName: 'eshopweb2025-app'                # اسم Web App
+  imageRepository: 'eshoppublicapi'             # فقط اسم سرویس PublicApi در Compose
+  tag: '$(Build.BuildId)'
 
-  # ---- این 3 تا را با واقعی‌ها عوض کن ----
-  acrServiceConnection: '967017a6-509a-45db-b010-108cbc4c077a'           # Docker Registry (ACR) service connection
-  azureSubscription: 'arm-eshop'              # ARM service connection
-  webAppName: 'eshopweb2025-app'                # نام Web App (Linux/Container)
-  # -----------------------------------------
+steps:
 
-stages:
-# =======================
-# 1) BUILD
-# =======================
-- stage: Build
-  displayName: 'Build'
-  jobs:
-  - job: BuildJob
-    pool:
-      vmImage: 'ubuntu-latest'
-    steps:
-    - task: UseDotNet@2
-      displayName: 'Use .NET SDK 8'
-      inputs:
-        packageType: 'sdk'
-        version: '8.0.x'
+# لاگین به ACR
+- task: Docker@2
+  displayName: 'Login to ACR'
+  inputs:
+    command: login
+    containerRegistry: '$(acrServiceConnection)'
 
-    - script: |
-        dotnet restore
-        dotnet build --configuration Release
-      displayName: 'dotnet restore & build'
+# Build همه سرویس‌ها با Compose
+- task: DockerCompose@0
+  displayName: 'Docker Compose - Build'
+  inputs:
+    containerregistrytype: 'Azure Container Registry'
+    azureSubscriptionEndpoint: '$(acrServiceConnection)'
+    dockerComposeFile: '**/docker-compose.yml'
+    additionalDockerComposeFiles: '**/docker-compose.override.yml'
+    action: 'Build services'
+    buildArguments: |
+      DOCKER_REGISTRY=$(acrLoginServer)/
+    includeLatestTag: true
+    includeProjectNameInTags: false
+    projectName: 'eshop'   # اختیاری: اسم prefix برای image name
 
-    # Build Docker image (بدون push)
-    - task: Docker@2
-      displayName: 'Docker build'
-      inputs:
-        command: 'build'
-        dockerfile: '$(dockerfilePath)'
-        buildContext: '$(buildContext)'
-        repository: '$(imageRepository)'
-        tags: |
-          $(imageTag)
+# Push همه ایمیج‌ها به ACR
+- task: DockerCompose@0
+  displayName: 'Docker Compose - Push'
+  inputs:
+    containerregistrytype: 'Azure Container Registry'
+    azureSubscriptionEndpoint: '$(acrServiceConnection)'
+    dockerComposeFile: '**/docker-compose.yml'
+    additionalDockerComposeFiles: '**/docker-compose.override.yml'
+    action: 'Push services'
+    buildArguments: |
+      DOCKER_REGISTRY=$(acrLoginServer)/
 
-    # خروجی نام کامل ایمیج برای مراحل بعد
-    - script: |
-        echo "$(acrLoginServer)/$(imageRepository):$(imageTag)" > image_name.txt
-        echo "IMAGE=$(acrLoginServer)/$(imageRepository):$(imageTag)"
-      displayName: 'Write image name'
-    - publish: image_name.txt
-      artifact: img
+# خروجی فقط image مربوط به PublicApi برای deploy
+- script: |
+    echo "$(acrLoginServer)/$(imageRepository):latest" > image_name.txt
+  displayName: 'Write image name'
+- publish: image_name.txt
+  artifact: img
 
-# =======================
-# 2) PUSH
-# =======================
-- stage: Push
-  displayName: 'Push to ACR'
-  dependsOn: Build
-  jobs:
-  - job: PushJob
-    pool:
-      vmImage: 'ubuntu-latest'
-    steps:
-    - download: current
-      artifact: img
+# Deploy فقط PublicApi به Azure Web App (Container)
+- download: current
+  artifact: img
 
-    - task: Docker@2
-      displayName: 'Login to ACR'
-      inputs:
-        command: 'login'
-        containerRegistry: '$(acrServiceConnection)'
+- task: Bash@3
+  name: readimg
+  inputs:
+    targetType: 'inline'
+    script: |
+      IMAGE=$(cat $(Pipeline.Workspace)/img/image_name.txt)
+      echo "##vso[task.setvariable variable=FULL_IMAGE]$IMAGE"
 
-    # توجه: چون بین استیج‌ها لایه‌های Docker حفظ نمی‌شوند، اینجا دوباره build می‌کنیم و سپس push می‌کنیم.
-    - task: Docker@2
-      displayName: 'Build & Push'
-      inputs:
-        command: 'buildAndPush'
-        containerRegistry: '$(acrServiceConnection)'
-        repository: '$(imageRepository)'
-        dockerfile: '$(dockerfilePath)'
-        buildContext: '$(buildContext)'
-        tags: |
-          $(imageTag)
-          latest
-
-# =======================
-# 3) DEPLOY
-# =======================
-- stage: Deploy
-  displayName: 'Deploy to Azure Web App (Container)'
-  dependsOn: Push
-  condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
-  jobs:
-  - deployment: DeployJob
-    environment: 'prod'     # می‌تونی اسم محیط رو عوض کنی
-    strategy:
-      runOnce:
-        deploy:
-          steps:
-          - download: current
-            artifact: img
-
-          - task: Bash@3
-            name: ReadImage
-            inputs:
-              targetType: 'inline'
-              script: |
-                IMAGE=$(cat $(Pipeline.Workspace)/img/image_name.txt)
-                echo "##vso[task.setvariable variable=FULL_IMAGE]$IMAGE"
-                echo "Using image: $IMAGE"
-
-          # ست کردن تنظیمات پورت (در صورت نیاز)
-          - task: AzureAppServiceSettings@1
-            displayName: 'Set WEBSITES_PORT app setting'
-            inputs:
-              azureSubscription: '$(azureSubscription)'
-              appName: '$(webAppName)'
-              appSettings: |
-                [
-                  {
-                    "name": "WEBSITES_PORT",
-                    "value": "$(containerPort)",
-                    "slotSetting": false
-                  }
-                ]
-
-          - task: AzureWebAppContainer@1
-            displayName: 'Deploy container'
-            inputs:
-              azureSubscription: '$(azureSubscription)'
-              appName: '$(webAppName)'
-              containers: '$(FULL_IMAGE)'
+- task: AzureWebAppContainer@1
+  displayName: 'Deploy to Azure Web App'
+  inputs:
+    azureSubscription: '$(azureSubscription)'
+    appName: '$(webAppName)'
+    containers: '$(FULL_IMAGE)'
