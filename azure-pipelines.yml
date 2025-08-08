@@ -28,6 +28,7 @@ steps:
 - task: DockerCompose@0
   displayName: 'Docker Compose - Build'
   inputs:
+    projectName: 'dotneteshop'
     containerregistrytype: 'Azure Container Registry'
     azureSubscriptionEndpoint: '$(azureSubscriptionEndpoint)'
     dockerComposeFile: '**/docker-compose.yml'
@@ -42,6 +43,7 @@ steps:
 - task: DockerCompose@0
   displayName: 'Docker Compose - Push'
   inputs:
+    projectName: 'dotneteshop'
     containerregistrytype: 'Azure Container Registry'
     azureSubscriptionEndpoint: '$(azureSubscriptionEndpoint)'
     dockerComposeFile: '**/docker-compose.yml'
