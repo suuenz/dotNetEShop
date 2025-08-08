@@ -1,79 +1,67 @@
 trigger:
-  branches:
-    include:
-      - main
-
-pool:
-  vmImage: ubuntu-latest
+- main
 
 variables:
-  acrLoginServer: 'eshopweb2025.azurecr.io'
-  acrServiceConnection: 'eshopweb2025-1124'         # ← Docker Registry
-  azureSubscription: 'Azure subscription 1 (2edd3441-9535-4384-9f66-2e3fad269e4c)'               # ← Azure Resource Manager
-  azureSubscriptionEndpoint: 'Azure subscription 1 (2edd3441-9535-4384-9f66-2e3fad269e4c)'       # ← برای DockerCompose
-  webAppName: 'eshopweb2025-app-1'
-  imageRepository: 'eshoppublicapi'
+  dockerRegistryServiceConnection: 'eshopweb2025'  # اسم سرویس‌کانکشن شما به ACR
+  imageRepository1: 'eshopwebmvc'
+  imageRepository2: 'eshoppublicapi'
+  containerRegistry: 'eshopweb2025.azurecr.io'
   tag: '$(Build.BuildId)'
+
+pool:
+  vmImage: 'ubuntu-latest'
 
 steps:
 
-# 🔐 لاگین به ACR
+- task: DockerInstaller@0
+  inputs:
+    dockerVersion: 'latest'
+
+# لاگین به ACR
 - task: Docker@2
   displayName: 'Login to ACR'
   inputs:
-    command: login
-    containerRegistry: '$(acrServiceConnection)'
+    command: 'login'
+    containerRegistry: '$(dockerRegistryServiceConnection)'
 
-# 🔧 Build با docker-compose
-- task: DockerCompose@0
-  displayName: 'Docker Compose - Build'
+# بیلد image اول
+- task: Docker@2
+  displayName: 'Build eshopwebmvc'
   inputs:
-    projectName: 'dotneteshop'
-    containerregistrytype: 'Azure Container Registry'
-    azureSubscriptionEndpoint: '$(azureSubscriptionEndpoint)'
-    dockerComposeFile: '**/docker-compose.yml'
-    additionalDockerComposeFiles: '**/docker-compose.override.yml'
-    action: 'Build services'
-    buildArguments: |
-      DOCKER_REGISTRY=$(acrLoginServer)/
-    includeLatestTag: true
-    includeProjectNameInTags: false
+    command: 'build'
+    dockerfile: 'src/Web/Dockerfile'
+    tags: |
+      $(tag)
+    repository: $(imageRepository1)
+    containerRegistry: '$(dockerRegistryServiceConnection)'
 
-# 📦 Push به ACR
-- task: DockerCompose@0
-  displayName: 'Docker Compose - Push'
+# بیلد image دوم
+- task: Docker@2
+  displayName: 'Build eshoppublicapi'
   inputs:
-    projectName: 'dotneteshop'
-    containerregistrytype: 'Azure Container Registry'
-    azureSubscriptionEndpoint: '$(azureSubscriptionEndpoint)'
-    dockerComposeFile: '**/docker-compose.yml'
-    additionalDockerComposeFiles: '**/docker-compose.override.yml'
-    action: 'Push services'
-    buildArguments: |
-      DOCKER_REGISTRY=$(acrLoginServer)/
+    command: 'build'
+    dockerfile: 'src/PublicApi/Dockerfile'
+    tags: |
+      $(tag)
+    repository: $(imageRepository2)
+    containerRegistry: '$(dockerRegistryServiceConnection)'
 
-# 🧾 ذخیره نام ایمیج publicapi برای deploy
-- script: |
-    echo "$(acrLoginServer)/$(imageRepository):latest" > image_name.txt
-  displayName: 'Write image name'
-- publish: image_name.txt
-  artifact: img
-
-# 🚀 Deploy به Web App
-- download: current
-  artifact: img
-
-- task: Bash@3
-  name: readimg
+# پوش image اول
+- task: Docker@2
+  displayName: 'Push eshopwebmvc'
   inputs:
-    targetType: 'inline'
-    script: |
-      IMAGE=$(cat $(Pipeline.Workspace)/img/image_name.txt)
-      echo "##vso[task.setvariable variable=FULL_IMAGE]$IMAGE"
+    command: 'push'
+    repository: $(imageRepository1)
+    tags: |
+      $(tag)
+    containerRegistry: '$(dockerRegistryServiceConnection)'
 
-- task: AzureWebAppContainer@1
-  displayName: 'Deploy to Azure Web App'
+# پوش image دوم
+- task: Docker@2
+  displayName: 'Push eshoppublicapi'
   inputs:
-    azureSubscription: '$(azureSubscription)'
-    appName: '$(webAppName)'
-    containers: '$(FULL_IMAGE)'
+    command: 'push'
+    repository: $(imageRepository2)
+    tags: |
+      $(tag)
+    containerRegistry: '$(dockerRegistryServiceConnection)'
