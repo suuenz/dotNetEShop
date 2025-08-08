@@ -1,0 +1,34 @@
+# اجرای پایپلاین به صورت خودکار روی شاخه main
+trigger:
+- main
+
+# تعریف متغیرها برای استفاده در مراحل بعدی
+variables:
+  dockerRegistryServiceConnection: 'eshopwebdr'  # نام سرویسی که برای اتصال به ACR ساختی
+  projectName: 'eshopweb2025'                    # نام پروژه (برای استفاده در Docker Compose)
+
+# استفاده از ایمیج لینوکسی برای اجرای Jobها
+pool:
+  vmImage: 'ubuntu-latest'
+
+steps:
+# مرحله اول: بیلد کردن ایمیج‌ها با استفاده از docker-compose
+- task: DockerCompose@0
+  displayName: 'Build Docker Images'
+  inputs:
+    containerregistrytype: 'Azure Container Registry'        # نوع رجیستری ACR است
+    dockerRegistryServiceConnection: $(dockerRegistryServiceConnection)  # اتصال به ACR
+    dockerComposeFile: '**/docker-compose.yml'               # مسیر فایل docker-compose
+    action: 'Build services'                                 # عملیات بیلد
+    projectName: $(projectName)                              # نام پروژه برای docker-compose
+    includeLatestTag: true                                   # تگ latest هم زده بشه
+
+# مرحله دوم: پوش کردن ایمیج‌ها به رجیستری
+- task: DockerCompose@0
+  displayName: 'Push Docker Images to ACR'
+  inputs:
+    containerregistrytype: 'Azure Container Registry'
+    dockerRegistryServiceConnection: $(dockerRegistryServiceConnection)
+    dockerComposeFile: '**/docker-compose.yml'
+    action: 'Push services'
+    projectName: $(projectName)
