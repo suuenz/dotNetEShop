@@ -25,6 +25,14 @@ steps:
 
 # مرحله دوم: پوش کردن ایمیج‌ها به رجیستری
 - task: DockerCompose@0
+  displayName: Push images
+  inputs:
+    containerregistrytype: 'Azure Container Registry'
+    azureSubscription: 'eshopwebrm'
+    azureContainerRegistry: 'eshopwebdr'
+    dockerComposeFile: '**/docker-compose.yml'
+    action: 'Push services'
+- task: DockerCompose@0
   displayName: 'Push Docker Images to ACR'
   inputs:
     containerregistrytype: 'Azure Container Registry'
