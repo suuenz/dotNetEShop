@@ -16,7 +16,7 @@ variables:
 
   # ---- این 3 تا را با واقعی‌ها عوض کن ----
   acrServiceConnection: '967017a6-509a-45db-b010-108cbc4c077a'           # Docker Registry (ACR) service connection
-  azureSubscription: 'Azure subscription 1 (2edd3441-9535-4384-9f66-2e3fad269e4c)'              # ARM service connection
+  azureSubscription: 'arm-eshop'              # ARM service connection
   webAppName: 'eshopweb2025-app'                # نام Web App (Linux/Container)
   # -----------------------------------------
 
