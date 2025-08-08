@@ -1,0 +1,49 @@
+trigger:
+- main  # یا نام هر برنچی که می‌خوای CI روی اون فعال باشه
+
+variables:
+  dockerRegistryServiceConnection: 'eshopweb2025'  # 🔁 اسم سرویس‌کانکشن
+  containerRegistry: 'eshopweb2025.azurecr.io'     # 🔁 آدرس کامل ACR
+  tag: '$(Build.BuildId)'                          # 🔁 از ID بیلد برای تگ استفاده می‌کنیم
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+steps:
+
+# نصب Docker نسخه مناسب
+- task: DockerInstaller@0
+  inputs:
+    dockerVersion: 'latest'
+
+# لاگین به ACR
+- task: Docker@2
+  displayName: Login to ACR
+  inputs:
+    command: login
+    containerRegistry: $(dockerRegistryServiceConnection)
+
+# ساخت ایمیج‌ها با docker-compose
+- task: DockerCompose@0
+  displayName: Build images with Docker Compose
+  inputs:
+    containerregistrytype: 'Azure Container Registry'
+    azureSubscription: $(dockerRegistryServiceConnection)
+    azureContainerRegistry: $(containerRegistry)
+    dockerComposeFile: 'docker-compose.yml'
+    action: 'Build services'
+    includeSourceTags: true
+    includeLatestTag: true
+    buildImages: true
+
+# Push ایمیج‌ها به ACR
+- task: DockerCompose@0
+  displayName: Push images with Docker Compose
+  inputs:
+    containerregistrytype: 'Azure Container Registry'
+    azureSubscription: $(dockerRegistryServiceConnection)
+    azureContainerRegistry: $(containerRegistry)
+    dockerComposeFile: 'docker-compose.yml'
+    action: 'Push services'
+    includeSourceTags: true
+    includeLatestTag: true
