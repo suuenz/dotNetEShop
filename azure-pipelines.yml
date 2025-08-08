@@ -7,28 +7,29 @@ pool:
   vmImage: ubuntu-latest
 
 variables:
-  acrLoginServer: 'eshopweb2025.azurecr.io'         # آدرس ACR شما
-  acrServiceConnection: 'eshopweb2025'        # اتصال ACR در DevOps
-  azureSubscription: 'arm-eshop'                # اتصال ARM برای دیپلوی
-  webAppName: 'eshopweb2025-app'                # اسم Web App
-  imageRepository: 'eshoppublicapi'             # فقط اسم سرویس PublicApi در Compose
+  acrLoginServer: 'eshopweb2025.azurecr.io'
+  acrServiceConnection: 'eshopweb2025'         # ← Docker Registry
+  azureSubscription: 'arm_eshop'               # ← Azure Resource Manager
+  azureSubscriptionEndpoint: 'arm_eshop'       # ← برای DockerCompose
+  webAppName: 'eshopweb2025-app'
+  imageRepository: 'eshoppublicapi'
   tag: '$(Build.BuildId)'
 
 steps:
 
-# لاگین به ACR
+# 🔐 لاگین به ACR
 - task: Docker@2
   displayName: 'Login to ACR'
   inputs:
     command: login
     containerRegistry: '$(acrServiceConnection)'
 
-# Build همه سرویس‌ها با Compose
+# 🔧 Build با docker-compose
 - task: DockerCompose@0
   displayName: 'Docker Compose - Build'
   inputs:
     containerregistrytype: 'Azure Container Registry'
-    azureSubscriptionEndpoint: '$(acrServiceConnection)'
+    azureSubscriptionEndpoint: '$(azureSubscriptionEndpoint)'
     dockerComposeFile: '**/docker-compose.yml'
     additionalDockerComposeFiles: '**/docker-compose.override.yml'
     action: 'Build services'
@@ -36,28 +37,27 @@ steps:
       DOCKER_REGISTRY=$(acrLoginServer)/
     includeLatestTag: true
     includeProjectNameInTags: false
-    projectName: 'eshop'   # اختیاری: اسم prefix برای image name
 
-# Push همه ایمیج‌ها به ACR
+# 📦 Push به ACR
 - task: DockerCompose@0
   displayName: 'Docker Compose - Push'
   inputs:
     containerregistrytype: 'Azure Container Registry'
-    azureSubscriptionEndpoint: '$(acrServiceConnection)'
+    azureSubscriptionEndpoint: '$(azureSubscriptionEndpoint)'
     dockerComposeFile: '**/docker-compose.yml'
     additionalDockerComposeFiles: '**/docker-compose.override.yml'
     action: 'Push services'
     buildArguments: |
       DOCKER_REGISTRY=$(acrLoginServer)/
 
-# خروجی فقط image مربوط به PublicApi برای deploy
+# 🧾 ذخیره نام ایمیج publicapi برای deploy
 - script: |
     echo "$(acrLoginServer)/$(imageRepository):latest" > image_name.txt
   displayName: 'Write image name'
 - publish: image_name.txt
   artifact: img
 
-# Deploy فقط PublicApi به Azure Web App (Container)
+# 🚀 Deploy به Web App
 - download: current
   artifact: img
 
