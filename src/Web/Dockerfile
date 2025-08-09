@@ -21,8 +21,8 @@ FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS runtime
 WORKDIR /app
 # Optional: Set this here if not setting it from docker-compose.yml
 # ENV ASPNETCORE_ENVIRONMENT Development
-ENV ASPNETCORE_URLS=http://+:8080
-EXPOSE 8080
+ENV ASPNETCORE_URLS=http://+:5000
+EXPOSE 5000
 COPY --from=build /app/src/Web/out ./
 
 ENTRYPOINT ["dotnet", "Web.dll"]
