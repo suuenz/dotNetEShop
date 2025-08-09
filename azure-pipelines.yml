@@ -1,0 +1,152 @@
+# ===================== azure-pipelines.yml ======================
+trigger:
+- main
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+variables:
+  # --- Service Connections ---
+  dockerRegistryServiceConnection: 'eshopweb2025'   # Docker Registry (ACR)
+  azureSubscription: 'Azure subscription 1 (2edd3441-9535-4384-9f66-2e3fad269e4c)'                 # Azure RM (برای AzureCLI)
+
+  # --- ACR / images (مقادیر را با خودتان هماهنگ کنید) ---
+  acrLoginServer: 'eshopweb2025.azurecr.io'       # login server رجیستری شما
+  repoWeb: 'eshopwebmvc'                          # نام ریپوی وب
+  repoApi: 'eshoppublicapi'                       # اگر سرویس API دارید
+  tag: 'v1.0'                                     # تگ ثابت
+
+  # --- Web App info ---
+  resourceGroup: 'DefaultResourceGroup-CUS'                  # RG وب‌اپ
+  webAppName: 'eshop-webapp'                      # نام وب‌اپ موجود/دلخواه
+
+  # اگر اپ داخل کانتینر روی 8080 گوش می‌دهد مقدار بدهید؛ اگر روی 80 است خالی بگذارید
+  websitesPort: '8080'
+
+  # --- compose file ---
+  composeFile: 'docker-compose.yml'
+  composeProject: 'eshopapp'
+
+steps:
+# صرفاً برای اطمینان از وجود Docker/Compose روی ایجنت‌های مایکروسافتی
+- script: |
+    docker --version
+    docker compose version
+  displayName: 'Check Docker & Compose versions'
+
+# نکته: در docker-compose.yml باید imageها مشابه زیر باشند:
+# services:
+#   eshopwebmvc:
+#     image: eshopweb2025.azurecr.io/eshopwebmvc   # بدون تگ یا با :latest
+#     build:
+#       context: .
+#       dockerfile: src/Web/Dockerfile
+#   eshoppublicapi:
+#     image: eshopweb2025.azurecr.io/eshoppublicapi
+#     build:
+#       context: .
+#       dockerfile: src/PublicApi/Dockerfile
+
+# Build همه سرویس‌ها با compose
+- task: DockerCompose@0
+  displayName: 'Compose: Build services'
+  inputs:
+    containerregistrytype: 'Azure Container Registry'
+    dockerRegistryServiceConnection: $(dockerRegistryServiceConnection)
+    dockerComposeFile: $(composeFile)
+    action: 'Build services'
+    projectName: $(composeProject)
+
+# اگر در compose تگ مشخص نکردید، اینجا هر دو ایمیج را به v1.0 تگ می‌کنیم
+- script: |
+    set -e
+    docker tag $(acrLoginServer)/$(repoWeb):latest $(acrLoginServer)/$(repoWeb):$(tag) || true
+    docker tag $(acrLoginServer)/$(repoApi):latest $(acrLoginServer)/$(repoApi):$(tag) || true
+  displayName: 'Tag images as v1.0'
+
+# Push همه سرویس‌ها به ACR
+- task: DockerCompose@0
+  displayName: 'Compose: Push services'
+  inputs:
+    containerregistrytype: 'Azure Container Registry'
+    dockerRegistryServiceConnection: $(dockerRegistryServiceConnection)
+    dockerComposeFile: $(composeFile)
+    action: 'Push services'
+    projectName: $(composeProject)
+
+# دیپلوی: مثل azd رفتار می‌کنیم (MI + AcrPull + ست‌کردن کانتینر)
+- task: AzureCLI@2
+  displayName: 'Deploy web image to Web App (container)'
+  inputs:
+    azureSubscription: $(azureSubscription)
+    scriptType: bash
+    scriptLocation: inlineScript
+    inlineScript: |
+      set -e
+
+      RG='$(resourceGroup)'
+      APP='$(webAppName)'
+      ACR_LOGIN='$(acrLoginServer)'
+      IMAGE="$(ACR_LOGIN)/$(repoWeb):$(tag)"
+      PORT='$(websitesPort)'
+
+      echo "Target image: $IMAGE"
+
+      # اطمینان از وجود RG (idempotent)
+      az group create -n "$RG" -l westeurope 1>/dev/null
+
+      # اگر وب‌اپ از قبل ساخته نشده، یک وب‌اپ لینوکسی خالی می‌سازیم (کانتینر را بعداً ست می‌کنیم)
+      if ! az webapp show -g "$RG" -n "$APP" 1>/dev/null 2>&1; then
+        PLAN="asp-$APP-linux-b1"
+        az appservice plan create -g "$RG" -n "$PLAN" --is-linux --sku B1 1>/dev/null
+        az webapp create -g "$RG" -p "$PLAN" -n "$APP" --deployment-container-image-name "hello-world" 1>/dev/null
+      fi
+
+      # Managed Identity را روشن می‌کنیم و نقش AcrPull به آن می‌دهیم
+      az webapp identity assign -g "$RG" -n "$APP" 1>/dev/null
+      MI=$(az webapp identity show -g "$RG" -n "$APP" --query principalId -o tsv)
+      ACR_NAME=$(echo "$ACR_LOGIN" | cut -d'.' -f1)             # eshopweb2025
+      ACR_ID=$(az acr show -n "$ACR_NAME" --query id -o tsv)
+      az role assignment create --assignee-object-id "$MI" \
+        --assignee-principal-type ServicePrincipal \
+        --role AcrPull --scope "$ACR_ID" 1>/dev/null || true
+
+      # ست کردن ایمیج کانتینر (linuxFxVersion)
+      az webapp config container set -g "$RG" -n "$APP" \
+        --container-image-name "$IMAGE" \
+        --container-registry-url "https://$ACR_LOGIN" 1>/dev/null
+
+      # پورت کانتینر اگر لازم است
+      if [ -n "$PORT" ]; then
+        az webapp config appsettings set -g "$RG" -n "$APP" \
+          --settings WEBSITES_PORT=$PORT 1>/dev/null
+      fi
+
+      # Restart
+      az webapp restart -g "$RG" -n "$APP" 1>/dev/null
+
+# تست سادهٔ در دسترس بودن وب‌اپ (HTTP 200-499) با چندبار تلاش
+- task: AzureCLI@2
+  displayName: 'Health check (curl)'
+  inputs:
+    azureSubscription: $(azureSubscription)
+    scriptType: bash
+    scriptLocation: inlineScript
+    inlineScript: |
+      set -e
+      RG='$(resourceGroup)'
+      APP='$(webAppName)'
+      URL="https://$APP.azurewebsites.net"
+      echo "Probing $URL ..."
+      for i in {1..12}; do
+        CODE=$(curl -L -s -o /dev/null -w "%{http_code}" "$URL" || true)
+        echo "Attempt $i - HTTP $CODE"
+        if [ "$CODE" -ge 200 ] && [ "$CODE" -lt 500 ]; then
+          echo "✅ App is responding at $URL"
+          exit 0
+        fi
+        sleep 10
+      done
+      echo "❌ App did not respond successfully. Check Container logs in App Service."
+      exit 1
+# ===============================================================#
