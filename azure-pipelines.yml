@@ -100,7 +100,7 @@ steps:
       echo "Target image: $IMAGE"
 
       # اطمینان از وجود RG (idempotent)
-      az group create -n "$RG" -l westeurope 1>/dev/null
+      az group create -n "$RG" -l centralus 1>/dev/null
 
       # اگر وب‌اپ از قبل ساخته نشده، یک وب‌اپ لینوکسی خالی می‌سازیم (کانتینر را بعداً ست می‌کنیم)
       if ! az webapp show -g "$RG" -n "$APP" 1>/dev/null 2>&1; then
