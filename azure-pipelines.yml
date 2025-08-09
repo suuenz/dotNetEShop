@@ -20,8 +20,8 @@ variables:
   resourceGroup: 'DefaultResourceGroup-CUS'                  # RG وب‌اپ
   webAppName: 'eshop-webapp'                      # نام وب‌اپ موجود/دلخواه
 
-  # اگر اپ داخل کانتینر روی 8080 گوش می‌دهد مقدار بدهید؛ اگر روی 80 است خالی بگذارید
-  websitesPort: '8080'
+  # اگر اپ داخل کانتینر روی 5000 گوش می‌دهد مقدار بدهید؛ اگر روی 80 است خالی بگذارید
+  websitesPort: '5000'
 
   # --- compose file ---
   composeFile: 'docker-compose.yml'
