@@ -112,7 +112,7 @@ steps:
       # Managed Identity را روشن می‌کنیم و نقش AcrPull به آن می‌دهیم
       az webapp identity assign -g "$RG" -n "$APP" 1>/dev/null
       MI=$(az webapp identity show -g "$RG" -n "$APP" --query principalId -o tsv)
-      ACR_NAME=$(echo "$ACR_LOGIN" | cut -d'.' -f1)             # eshopweb2025
+      ACR_NAME=$(echo "$(acrLoginServer)" | cut -d'.' -f1)             # eshopweb2025
       ACR_ID=$(az acr show -n "$ACR_NAME" --query id -o tsv)
       az role assignment create --assignee-object-id "$MI" \
         --assignee-principal-type ServicePrincipal \
