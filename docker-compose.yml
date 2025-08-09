@@ -2,14 +2,14 @@ version: '3.4'
 
 services:
   eshopwebmvc:
-    image: eshopweb2025.azurecr.io/eshopwebmvc
+    image: eshopweb2025.azurecr.io/eshopwebmvc:v1.0
     build:
       context: .
       dockerfile: src/Web/Dockerfile
     depends_on:
       - "sqlserver"
   eshoppublicapi:
-    image: eshopweb2025.azurecr.io/eshoppublicapi
+    image: eshopweb2025.azurecr.io/eshoppublicapi:v1.0
     build:
       context: .
       dockerfile: src/PublicApi/Dockerfile
@@ -22,5 +22,6 @@ services:
     environment:
       - SA_PASSWORD=@someThingComplicated1234
       - ACCEPT_EULA=Y
+
 
 
