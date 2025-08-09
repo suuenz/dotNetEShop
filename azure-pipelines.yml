@@ -94,7 +94,7 @@ steps:
       RG='$(resourceGroup)'
       APP='$(webAppName)'
       ACR_LOGIN='$(acrLoginServer)'
-      IMAGE='$(ACR_LOGIN)/$(repoWeb):$(tag)''
+      IMAGE='$(ACR_LOGIN)/$(repoWeb):$(tag)'
       PORT='$(websitesPort)'
 
       echo "Target image: $IMAGE"
